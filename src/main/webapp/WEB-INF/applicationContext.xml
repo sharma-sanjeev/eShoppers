@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:security="http://www.springframework.org/schema/security"
+       xmlns:webflow-config="http://www.springframework.org/schema/webflow-config"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/security http://www.springframework.org/schema/security/spring-security.xsd http://www.springframework.org/schema/webflow-config http://www.springframework.org/schema/webflow-config/spring-webflow-config.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+
+    <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="${jdbc.driverClassName}"/>
+        <property name="url" value="${jdbc.url}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+    </bean>
+
+    <bean id="sessionFactory" class="org.springframework.orm.hibernate4.LocalSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="hibernateProperties">
+            <props>
+                <prop key="hibernate.dialect">org.hibernate.dialect.H2Dialect</prop>
+                <prop key="hibernate.hbm2ddl.auto">update</prop>
+                <prop key="hibernate.show_sql">true</prop>
+                <prop key="hibernate.format_sql">true</prop>
+            </props>
+        </property>
+        <property name="packagesToScan">
+            <list>
+                <value>com.eshoppers</value>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="transactionManager" class="org.springframework.orm.hibernate4.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"/>
+    </bean>
+
+    <bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+        <property name="maxUploadSize" value="1024000"/>
+    </bean>
+
+    <security:http auto-config="true">
+        <security:intercept-url pattern="/admin/**" access="ROLE_ADMIN"/>
+        <security:intercept-url pattern="/customer/**" access="ROLE_USER"/>
+        <security:form-login
+                login-page="/login"
+                authentication-failure-url="/login?error"
+                username-parameter="username"
+                password-parameter="password"
+                authentication-success-handler-ref="refererHandler"/>
+        <security:logout logout-success-url="/login?logout"/>
+    </security:http>
+
+    <security:authentication-manager>
+        <security:authentication-provider>
+            <security:password-encoder ref="bcrypt"/>
+            <security:jdbc-user-service data-source-ref="dataSource"
+                                        authorities-by-username-query="SELECT username, authority FROM authorities WHERE username = ?"
+                                        users-by-username-query="SELECT username, password, enabled FROM users WHERE username = ?"/>
+        </security:authentication-provider>
+    </security:authentication-manager>
+
+    <bean id="refererHandler"
+          class="org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler">
+        <property name="useReferer" value="true"/>
+    </bean>
+
+    <bean id="bcrypt" class="org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder"/>
+
+    <webflow-config:flow-executor id="flowExecutor" flow-registry="flowRegistry"/>
+    <webflow-config:flow-registry id="flowRegistry" base-path="/WEB-INF/flows">
+        <webflow-config:flow-location path="/checkout/checkout-flow.xml" id="checkout"/>
+    </webflow-config:flow-registry>
+
+    <bean id="flowHandlerMapping" class="org.springframework.webflow.mvc.servlet.FlowHandlerMapping">
+        <property name="flowRegistry" ref="flowRegistry"/>
+    </bean>
+
+    <bean id="flowHandlerAdaptor" class="org.springframework.webflow.mvc.servlet.FlowHandlerAdapter">
+        <property name="flowExecutor" ref="flowExecutor"/>
+    </bean>
+
+    <bean id="dataSourceInitializer" class="org.springframework.jdbc.datasource.init.DataSourceInitializer">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="enabled" value="true"/>
+        <property name="databasePopulator">
+            <bean class="org.springframework.jdbc.datasource.init.ResourceDatabasePopulator">
+                <property name="continueOnError" value="false"/>
+                <property name="ignoreFailedDrops" value="false"/>
+                <property name="sqlScriptEncoding" value="UTF-8"/>
+                <property name="scripts">
+                    <list>
+                        <value type="org.springframework.core.io.Resource">classpath:data.sql</value>
+                    </list>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
+    <bean id="org.h2.tools.Server"
+          class="org.h2.tools.Server"
+          factory-method="createTcpServer"
+          init-method="start"
+          destroy-method="stop">
+        <constructor-arg value="-tcp,-tcpAllowOthers,-tcpPort,8043"/>
+    </bean>
+
+</beans>
